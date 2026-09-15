@@ -1,0 +1,218 @@
+{
+  "_comment": "Edit this file to change gestures, actions, sensitivity, cooldowns, auth, and camera settings. No Python editing needed. Reload by restarting main_gesture.py, or press 'r' in the running window to hot-reload.",
+  "camera": {
+    "use_existing_project_camera_settings": true,
+    "_note": "When true, CAMERA_INDEX / CAMERA_WIDTH / CAMERA_HEIGHT / CAMERA_BACKEND / MIRROR_PREVIEW are read from the existing ai_security_camera/config.py so you only maintain them in one place. Set to false to override with the values below.",
+    "index": 0,
+    "width": 1920,
+    "height": 1080,
+    "backend": "DSHOW",
+    "mirror_preview": true
+  },
+  "authentication": {
+    "recognition_threshold": null,
+    "_recognition_threshold_note": "null = reuse RECOGNITION_THRESHOLD from the existing config.py. Set a number (e.g. 0.38) to override just for gesture control.",
+    "consecutive_owner_frames_to_unlock": 6,
+    "consecutive_unknown_frames_to_lock": 3,
+    "owner_lost_timeout_seconds": 1.5,
+    "auth_check_every_n_frames": 2,
+    "strangers_allowed": true,
+    "_strangers_allowed_note": "true (default): control unlocks whenever YOU are confirmed present, even if other people are also visible in the frame. false: any unrecognized face anywhere in frame locks control immediately, even if you are also detected - the stricter original behavior."
+  },
+  "hands": {
+    "backend": "tasks_gpu_then_cpu",
+    "_backend_note": "'tasks_gpu_then_cpu' tries the MediaPipe Tasks API with a GPU delegate and falls back to CPU automatically if GPU init fails (common on Windows) or the model file can't be downloaded. 'tasks_cpu' forces CPU via the Tasks API. 'legacy_cpu' uses the older mediapipe.solutions.hands API (CPU only, no model download needed) as a last-resort fallback.",
+    "max_num_hands": 2,
+    "min_detection_confidence": 0.6,
+    "min_tracking_confidence": 0.5,
+    "model_complexity": 1,
+    "processing_width": 480,
+    "_processing_width_note": "Hand landmark detection runs on a resized COPY of the frame at this width (aspect-ratio preserved), regardless of your camera's capture resolution. Lowered to 480 (from 640) to test faster/smoother tracking - if hand detection feels less accurate at a distance, try 640 instead. Display and face-recognition still use the full-res frame."
+  },
+  "reliability": {
+    "smoothing_window_frames": 5,
+    "static_gesture_debounce_frames": 4,
+    "default_action_cooldown_seconds": 0.35,
+    "motion_gesture_cooldown_seconds": 0.5,
+    "emergency_esc_enabled": true,
+    "hand_grace_period_seconds": 0.25,
+    "_hand_grace_period_note": "How long (seconds) a hand's tracking state - gesture hold timers, cooldowns, swipe motion history - is kept alive through a brief gap in detection before being reset. MediaPipe occasionally misses a single frame, especially during fast motion (motion blur) - exactly when a swipe is happening. Without this grace period, a single missed frame would silently wipe cooldowns (letting the same gesture misfire again immediately) and reset swipe motion tracking mid-swipe.",
+    "max_tracked_hands": 2,
+    "hand_match_max_distance": 0.35,
+    "_hand_match_max_distance_note": "Hands are matched frame-to-frame by how close their palm center is to where a tracked hand was last seen (normalized 0..1 units), NOT by MediaPipe's own Left/Right label, which can flicker frame-to-frame for the same physical hand. Raise this if fast hand movement loses tracking; lower it if two hands near each other get confused.",
+    "one_euro_min_cutoff": 0.8,
+    "one_euro_beta": 0.9,
+    "one_euro_dcutoff": 1.0,
+    "_one_euro_note": "Cursor/scroll/drag point smoothing now uses a One Euro Filter (adaptive: heavy smoothing when the hand is nearly still, light smoothing/low lag when it's moving fast) instead of a plain fixed-alpha EMA, which could only ever be a compromise between 'smooth at rest' and 'responsive in motion'. min_cutoff = baseline smoothing at rest (lower = smoother but more baseline lag). beta = how much lag gets traded away as speed increases (higher = snappier during fast movement). dcutoff rarely needs changing."
+  },
+  "mouse": {
+    "mode": "relative",
+    "_mode_note": "'relative' moves the cursor by a scaled delta each frame (steadier, less jittery, works from anywhere in frame). 'absolute' maps the hand's position in the camera frame directly to a position on screen.",
+    "relative_sensitivity": 1400,
+    "absolute_margin": 0.12,
+    "dead_zone": 0.0015,
+    "_dead_zone_note": "Frame-to-frame hand-tracking noise is normal even when your hand is perfectly still. Any movement smaller than this (in normalized 0..1 units) is treated as noise and ignored, instead of being amplified into cursor jitter by relative_sensitivity. Raise if the cursor still drifts at rest; lower if fine small movements feel unresponsive.",
+    "max_speed_px_per_frame": 60,
+    "max_accel_px_per_frame": 18,
+    "_accel_note": "max_speed_px_per_frame caps how far the cursor can jump in one frame no matter what (protects against a single bad tracking frame). max_accel_px_per_frame caps how much the movement can CHANGE from the previous frame - this is what actually removes the choppy feel, since jitter shows up as small random accelerations frame to frame. Raise max_accel if fast swipes across the screen feel sluggish to reach full speed; lower it if the cursor still feels jerky."
+  },
+  "gestures": {
+    "pinch_index_click": {
+      "type": "pinch",
+      "hand": "any",
+      "finger_a": "thumb",
+      "finger_b": "index",
+      "enter_threshold": 0.2,
+      "exit_threshold": 0.38,
+      "hold_ms": 90
+    },
+    "pinch_middle_click": {
+      "type": "pinch",
+      "hand": "any",
+      "finger_a": "thumb",
+      "finger_b": "middle",
+      "enter_threshold": 0.2,
+      "exit_threshold": 0.38,
+      "hold_ms": 90
+    },
+    "point_index": {
+      "type": "fingers",
+      "hand": "any",
+      "pattern": [
+        false,
+        true,
+        false,
+        false,
+        false
+      ],
+      "hold_ms": 0
+    },
+    "open_palm": {
+      "type": "fingers",
+      "hand": "any",
+      "pattern": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "hold_ms": 250
+    },
+    "two_finger_scroll": {
+      "type": "fingers",
+      "hand": "any",
+      "pattern": [
+        null,
+        true,
+        true,
+        false,
+        false
+      ],
+      "hold_ms": 0
+    },
+    "thumb_pinky_ok": {
+      "type": "fingers",
+      "hand": "any",
+      "pattern": [
+        true,
+        false,
+        false,
+        false,
+        true
+      ],
+      "hold_ms": 300
+    },
+    "thumb": {
+      "type": "fingers",
+      "hand": "any",
+      "pattern": [
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "hold_ms": 300
+    },
+    "pinky": {
+      "type": "fingers",
+      "hand": "any",
+      "pattern": [
+        false,
+        false,
+        false,
+        false,
+        true
+      ],
+      "hold_ms": 300
+    },
+    "swipe_left": {
+      "type": "swipe",
+      "hand": "any",
+      "direction": "left",
+      "min_velocity": 0.85,
+      "window_ms": 350
+    },
+    "swipe_right": {
+      "type": "swipe",
+      "hand": "any",
+      "direction": "right",
+      "min_velocity": 0.85,
+      "window_ms": 350
+    },
+    "swipe_up": {
+      "type": "swipe",
+      "hand": "any",
+      "direction": "up",
+      "min_velocity": 0.85,
+      "window_ms": 350
+    },
+    "swipe_down": {
+      "type": "swipe",
+      "hand": "any",
+      "direction": "down",
+      "min_velocity": 0.85,
+      "window_ms": 350
+    }
+  },
+  "mappings": {
+    "point_index": {
+      "action": "move_cursor"
+    },
+    "pinch_index_click": {
+      "action": "left_click"
+    },
+    "pinch_middle_click": {
+      "action": "right_click"
+    },
+    "two_finger_scroll": {
+      "action": "drag"
+    },
+    "open_palm": {
+      "action": "media_play_pause"
+    },
+    "thumb_pinky_ok": {
+      "action": "lock_windows"
+    },
+    "thumb": {
+      "action": "scroll_vertical"
+    },
+    "pinky": {
+      "action": "alt_tab"
+    },
+    "swipe_left": {
+      "action": "media_previous"
+    },
+    "swipe_right": {
+      "action": "media_next"
+    },
+    "swipe_up": {
+      "action": "volume_up"
+    },
+    "swipe_down": {
+      "action": "volume_down"
+    }
+  },
+  "_action_catalog_note": "See gesture_control/action_engine.py ACTIONS dict for the full list of built-in action names you can put on the right-hand side of 'mappings' above: left_click, right_click, middle_click, double_click, drag, move_cursor, scroll_vertical, scroll_horizontal, key_press, key_combo, copy, paste, cut, undo, redo, alt_tab, win_shortcut, open_app, close_window, minimize_window, maximize_window, volume_up, volume_down, volume_mute, media_play_pause, media_next, media_previous, brightness_up, brightness_down, screenshot, lock_windows, custom_hotkey, system_pause_toggle."
+}

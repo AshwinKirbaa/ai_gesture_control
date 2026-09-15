@@ -1,0 +1,11 @@
+# Install with: pip install -r requirements.txt -r requirements-gesture.txt
+# (requirements.txt still gives you opencv, numpy, insightface, onnxruntime, requests)
+
+mediapipe==0.10.14
+pyautogui==0.9.54
+pynput==1.7.7
+
+# Optional: only needed if you map a gesture to brightness_up/brightness_down.
+# Laptop brightness has no keyboard-level event, so pyautogui/pynput can't
+# control it directly - this talks to Windows' WMI brightness interface instead.
+screen-brightness-control==0.22.2

@@ -1,0 +1,116 @@
+﻿# ================================
+# Python
+# ================================
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# ================================
+# Node.js
+# ================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ================================
+# IDE
+# ================================
+.idea/
+.vscode/
+*.iml
+
+# ================================
+# Environment / Secrets
+# ================================
+.env
+.env.*
+!.env.example
+
+# Certificates / private keys
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ================================
+# OS files
+# ================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ================================
+# Logs
+# ================================
+*.log
+
+# ================================
+# Generated temporary files
+# ================================
+tmp/
+temp/
+*.tmp
+*.cache
+
+# ================================
+# Python / AI runtime artifacts
+# ================================
+*.dll
+*.exe
+*.onnx
+*.mdl
+*.fst
+*.carpa
+*.raw
+
+# ================================
+# Large archives
+# ================================
+*.zip
+*.7z
+*.rar
+
+# ================================
+# Generated captures / screenshots
+# ================================
+captures/
+camera_test_output/
+gesture_screenshots/
+
+# ================================
+# Face / biometric data
+# ================================
+known_faces/
+owner_photos_to_import/
+owner/
+owner_embeddings.npy
+
+# ================================
+# Local AI models / speech models
+# ================================
+vosk-model/
+piper-voices/
+
+# ================================
+# Local databases / uploads
+# ================================
+rag_database/
+uploads/
+
+# ================================
+# Python model caches
+# ================================
+.huggingface/
+.cache/
