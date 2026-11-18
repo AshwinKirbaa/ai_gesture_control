@@ -21,23 +21,38 @@ def recommend_dead_zone(points, percentile=0.95, safety_factor=1.35,
 
 
 class CursorCalibrator:
-    def __init__(self, duration_seconds=3.0):
+    def __init__(self, duration_seconds=3.0, minimum_samples=20):
         self.duration_seconds = duration_seconds
+        self.minimum_samples = minimum_samples
         self.started_at = None
+        self.last_sample_at = None
+        self.active_seconds = 0.0
         self.points = []
 
     def add(self, point, now):
         if self.started_at is None:
             self.started_at = now
+        if self.last_sample_at is not None:
+            # Count only continuous valid tracking time. A missing/incorrect
+            # pose pauses calibration instead of letting wall time expire.
+            gap = max(0.0, now - self.last_sample_at)
+            if gap <= 0.25:
+                self.active_seconds += gap
+        self.last_sample_at = now
         self.points.append((float(point[0]), float(point[1])))
 
     def remaining(self, now):
-        if self.started_at is None:
-            return self.duration_seconds
-        return max(0.0, self.duration_seconds - (now - self.started_at))
+        return max(0.0, self.duration_seconds - self.active_seconds)
+
+    def samples_remaining(self):
+        return max(0, self.minimum_samples - len(self.points))
 
     def complete(self, now):
-        return self.started_at is not None and self.remaining(now) <= 0
+        return (
+            self.started_at is not None
+            and self.remaining(now) <= 0
+            and self.samples_remaining() == 0
+        )
 
     def result(self):
         return recommend_dead_zone(self.points)

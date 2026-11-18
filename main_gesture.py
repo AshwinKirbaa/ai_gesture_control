@@ -306,7 +306,8 @@ def main():
                         calibrator.add(pointing_hands[0]["point_raw"], now)
                         calibration_message = (
                             "AUTO CALIBRATION: hold one pointing hand still - "
-                            f"{calibrator.remaining(now):.1f}s"
+                            f"{calibrator.remaining(now):.1f}s, "
+                            f"{calibrator.samples_remaining()} samples needed"
                         )
                     else:
                         calibration_message = "AUTO CALIBRATION: show exactly one pointing hand"
