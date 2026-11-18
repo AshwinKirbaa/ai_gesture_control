@@ -197,6 +197,8 @@ class _HandSlot:
         self.last_seen: float = 0.0
         self.motion = _HandMotionTrack()
         self.point_filter: Optional[OneEuroFilter2D] = None
+        # gesture_name -> bool, this hand's own pinch hysteresis state
+        self.pinch_state: Dict[str, bool] = {}
 
 
 @dataclass
@@ -288,10 +290,23 @@ class GestureEngine:
             this_frame_hand_data.append(hand_data)
 
             for gname, gdef in self.gestures_cfg.items():
+                if gdef.get("type") == "bimanual":
+                    continue  # evaluated in the bimanual pass below
                 if not self._hand_matches_filter(slot.handedness, gdef.get("hand", "any")):
                     continue
-                raw = self._evaluate_raw(gdef, lms, fingers, slot.motion, now)
+                raw = self._evaluate_raw(gdef, lms, fingers, slot.motion, now,
+                                          slot.pinch_state, gname)
                 ev = self._update_track(gname, sid, gdef, raw, hand_data, now)
+                if ev is not None:
+                    events.append(ev)
+
+        # -- Bimanual pass: gestures that need data from BOTH hands at once --
+        # Only runs when at least 2 hands are currently tracked.
+        if len(this_frame_hand_data) >= 2:
+            for gname, gdef in self.gestures_cfg.items():
+                if gdef.get("type") != "bimanual":
+                    continue
+                ev = self._evaluate_bimanual(gname, gdef, this_frame_hand_data, now)
                 if ev is not None:
                     events.append(ev)
 
@@ -315,7 +330,95 @@ class GestureEngine:
         self.last_hand_data = this_frame_hand_data
         return events
 
-    # -- hand identity matching ------------------------------------------
+    def _evaluate_bimanual(self, gname: str, gdef: dict,
+                            hand_data_list: List[dict], now: float) -> Optional[GestureEvent]:
+        """Evaluates a gesture that requires both hands simultaneously.
+
+        Supported bimanual subtypes:
+            two_hand_distance  — fires while the distance between a specific
+                point on each hand (e.g. both index tips) is within a range
+                or changing in a particular direction. Used for zoom/spread.
+            two_hand_any       — fires while BOTH hands independently satisfy
+                their own per-hand condition (each specified as a nested
+                fingers/pinch def). Used for "both hands open" or "both
+                hands fisting" type coordinations.
+
+        The bimanual gesture has its own single track keyed "__bimanual__"
+        so it gets the same debounce/cooldown/hold machinery as any other.
+        """
+        subtype = gdef.get("subtype", "two_hand_distance")
+        raw = False
+
+        if subtype == "two_hand_distance":
+            # Get the nominated landmark (default: index tip) for each hand.
+            # Hands in hand_data_list are in slot order; we look for Left
+            # and Right labels to keep the semantics stable.
+            left_data = next((h for h in hand_data_list if h["handedness"] == "Left"), None)
+            right_data = next((h for h in hand_data_list if h["handedness"] == "Right"), None)
+            if left_data is None or right_data is None:
+                # Fall back to first two slots if handedness labels are both the same
+                left_data, right_data = hand_data_list[0], hand_data_list[1]
+
+            left_pt = left_data["point"]
+            right_pt = right_data["point"]
+            dist = _dist(left_pt, right_pt)
+
+            # Store previous distance in the bimanual track's extra state dict
+            bkey = ("__bimanual__", gname)
+            bstate = self._tracks.setdefault(bkey, _GestureTrack())
+            prev_dist = getattr(bstate, "_prev_dist", None)
+
+            direction = gdef.get("direction")  # "spreading", "pinching", or None (= any movement)
+            min_dist = gdef.get("min_distance", 0.0)
+            max_dist = gdef.get("max_distance", 2.0)
+            in_range = min_dist <= dist <= max_dist
+
+            if direction == "spreading":
+                raw = in_range and (prev_dist is not None) and (dist > prev_dist + gdef.get("min_delta", 0.005))
+            elif direction == "pinching":
+                raw = in_range and (prev_dist is not None) and (dist < prev_dist - gdef.get("min_delta", 0.005))
+            else:
+                raw = in_range
+
+            bstate._prev_dist = dist
+
+            # Merge the combined point (midpoint) into a synthetic hand_data
+            mid = ((left_pt[0] + right_pt[0]) / 2, (left_pt[1] + right_pt[1]) / 2)
+            combined_hand_data = {
+                "handedness": "Both",
+                "point": mid,
+                "point_raw": mid,
+                "left": left_data,
+                "right": right_data,
+                "distance": dist,
+            }
+            ev = self._update_track(gname, "__bimanual__", gdef, raw, combined_hand_data, now)
+            return ev
+
+        elif subtype == "two_hand_any":
+            # Both hands must independently satisfy their respective condition.
+            left_cond = gdef.get("left_condition", {})
+            right_cond = gdef.get("right_condition", {})
+            left_data = next((h for h in hand_data_list if h["handedness"] == "Left"), None)
+            right_data = next((h for h in hand_data_list if h["handedness"] == "Right"), None)
+            if left_data is None or right_data is None:
+                return None
+
+            # Re-use _evaluate_raw for each hand's sub-condition.
+            dummy_motion = _HandMotionTrack()
+            dummy_pinch = {}
+            left_ok = self._evaluate_raw(left_cond, left_data["landmarks"],
+                                          left_data["fingers"], dummy_motion, now,
+                                          dummy_pinch, gname + "_left")
+            right_ok = self._evaluate_raw(right_cond, right_data["landmarks"],
+                                           right_data["fingers"], dummy_motion, now,
+                                           dummy_pinch, gname + "_right")
+            raw = left_ok and right_ok
+            combined_hand_data = {"handedness": "Both", "left": left_data, "right": right_data,
+                                   "point": left_data["point"]}
+            return self._update_track(gname, "__bimanual__", gdef, raw, combined_hand_data, now)
+
+        return None
 
     def _assign_slots(self, detections: List[dict]) -> Dict[int, str]:
         """Greedy nearest-neighbor match of this frame's detections to
@@ -368,7 +471,8 @@ class GestureEngine:
             return True
         return label.lower() == wanted.lower()
 
-    def _evaluate_raw(self, gdef, lms, fingers, motion: _HandMotionTrack, now: float) -> bool:
+    def _evaluate_raw(self, gdef, lms, fingers, motion: _HandMotionTrack, now: float,
+                       pinch_state: dict, gname: str) -> bool:
         gtype = gdef.get("type")
         if gtype == "fingers":
             pattern = gdef.get("pattern", [None] * 5)
@@ -376,13 +480,16 @@ class GestureEngine:
 
         if gtype == "pinch":
             dist = pinch_distance_normalized(lms, gdef.get("finger_a", "thumb"), gdef.get("finger_b", "index"))
-            # hysteresis state is stored on the gesture def dict itself (cheap, fine here)
-            is_on = gdef.get("_pinch_is_on", False)
+            # Hysteresis state must live PER HAND, not on the shared gesture
+            # definition dict - two hands evaluating the same pinch gesture
+            # would otherwise overwrite each other's enter/exit state every
+            # frame, making both behave erratically.
+            is_on = pinch_state.get(gname, False)
             if is_on:
                 is_on = dist < gdef.get("exit_threshold", 0.40)
             else:
                 is_on = dist < gdef.get("enter_threshold", 0.20)
-            gdef["_pinch_is_on"] = is_on
+            pinch_state[gname] = is_on
             return is_on
 
         if gtype == "swipe":

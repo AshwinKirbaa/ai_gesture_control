@@ -214,6 +214,52 @@ regenerate) and loading it from an environment variable or a
 `.gitignore`'d file instead, especially before sharing this project folder
 with anyone or pushing it anywhere.
 
+## Two-hand control
+
+Both hands work simultaneously and independently. Which hand triggers a
+gesture is set by the `hand` field on each gesture definition (`"Left"`,
+`"Right"`, or `"any"`), so the same physical pose can do different things
+depending on which hand makes it.
+
+The default layout that ships in `gesture_settings.json`:
+
+| Hand | Gesture | Action |
+|---|---|---|
+| Right | Point index finger | Move cursor |
+| Right | Pinch thumb + index | Left click |
+| Right | Pinch thumb + middle | Right click |
+| Right | Pinch thumb + ring | Drag (hold to drag, release to drop) |
+| Left | Two fingers up | Scroll vertically |
+| Left | Open palm | Play/pause |
+| Left | Fist | Pause/resume gesture control |
+| Left | Swipe left | Previous track |
+| Left | Swipe right | Next track |
+
+So you can point-and-click with your right hand while scrolling or
+skipping tracks with your left, at the same time.
+
+"Left"/"Right" refer to your actual physical hands as you see yourself in
+the mirrored preview. To let either hand trigger something, set that
+gesture's `hand` to `"any"`. To go back to a one-handed setup, just set
+every gesture's `hand` to `"any"` and delete the duplicates you don't want.
+
+Two real bugs had to be fixed to make this work properly, both of which
+only show up with two hands active:
+- **Shared action state**: continuous/stateful action state (scroll
+  position, drag anchor) was keyed by gesture name alone. Two hands doing
+  the same gesture shared one state dict, so each hand computed its
+  movement delta against the *other* hand's previous position - producing
+  wild jumps. Now keyed per `(gesture, hand)`.
+- **Shared pinch hysteresis**: each pinch gesture's enter/exit threshold
+  state was stored on the shared gesture-definition dict, so two hands
+  evaluating the same pinch overwrote each other's state every frame. Now
+  stored per-hand.
+
+Both are covered by
+`test_two_hands_tracked_independently_with_separate_state()` and
+`test_hand_filter_restricts_gesture_to_one_hand()` in
+`test_gesture_engine.py`.
+
 ## Priority fixes implemented (One Euro Filter, acceleration limiter, etc.)
 
 Implemented per your priority ranking:

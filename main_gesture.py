@@ -105,8 +105,14 @@ class ActionController:
     def __init__(self, mappings: dict, dry_run: bool):
         self.mappings = mappings
         self.dry_run = dry_run
-        self._continuous_state = {}   # gesture_name -> prev_state dict
-        self._stateful_state = {}     # gesture_name -> state dict
+        # Keyed by (gesture_name, hand_label), NOT gesture_name alone. Two
+        # hands can perform the SAME gesture simultaneously (both scrolling,
+        # both dragging), and each needs its own independent last-position /
+        # accumulator state - sharing one dict between them makes each hand
+        # compute its delta against the other hand's previous position,
+        # producing wild jumps.
+        self._continuous_state = {}   # (gesture_name, hand_label) -> prev_state dict
+        self._stateful_state = {}     # (gesture_name, hand_label) -> state dict
         self.paused = False
         self.last_action_label = ""
 
@@ -143,6 +149,8 @@ class ActionController:
 
     def _dispatch(self, ev, action_name, spec, params):
         kind = spec["kind"]
+        # Per-hand state key - see the comment on _continuous_state above.
+        skey = (ev.gesture_name, ev.hand_label)
         try:
             if kind == "discrete" and ev.state == "start":
                 if self.dry_run:
@@ -152,32 +160,32 @@ class ActionController:
                 self.last_action_label = action_name
 
             elif kind == "continuous" and ev.state in ("start", "hold"):
-                prev = self._continuous_state.setdefault(ev.gesture_name, {})
+                prev = self._continuous_state.setdefault(skey, {})
                 if self.dry_run:
                     self.last_action_label = f"{action_name} (dry-run)"
                 else:
-                    self._continuous_state[ev.gesture_name] = spec["on_frame"](
+                    self._continuous_state[skey] = spec["on_frame"](
                         ev.hand_data, params, prev
                     )
                     self.last_action_label = action_name
             elif kind == "continuous" and ev.state == "end":
-                self._continuous_state.pop(ev.gesture_name, None)
+                self._continuous_state.pop(skey, None)
 
             elif kind == "stateful" and ev.state == "start":
                 if self.dry_run:
-                    self._stateful_state[ev.gesture_name] = {}
+                    self._stateful_state[skey] = {}
                     self.last_action_label = f"{action_name} start (dry-run)"
                 else:
-                    self._stateful_state[ev.gesture_name] = spec["on_enter"](params)
+                    self._stateful_state[skey] = spec["on_enter"](params)
                     self.last_action_label = f"{action_name} start"
             elif kind == "stateful" and ev.state == "hold":
-                state = self._stateful_state.get(ev.gesture_name)
+                state = self._stateful_state.get(skey)
                 if state is not None and not self.dry_run:
-                    self._stateful_state[ev.gesture_name] = spec["on_frame"](
+                    self._stateful_state[skey] = spec["on_frame"](
                         ev.hand_data, params, state
                     )
             elif kind == "stateful" and ev.state == "end":
-                state = self._stateful_state.pop(ev.gesture_name, None)
+                state = self._stateful_state.pop(skey, None)
                 if state is not None and not self.dry_run:
                     spec["on_exit"](params, state)
                 self.last_action_label = f"{action_name} end"

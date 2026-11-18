@@ -471,6 +471,115 @@ def _drag_exit(params, state):
 register_stateful("drag", _drag_enter, _drag_frame, _drag_exit)
 
 
+# --------------------------------------------------------------------------
+# Bimanual actions (both hands together for one task)
+# --------------------------------------------------------------------------
+
+@register("zoom_in", kind="discrete")
+def _zoom_in(params):
+    """Ctrl+scroll-up = zoom in (works in browsers, maps, image viewers,
+    VS Code, Office, etc.)."""
+    steps = params.get("steps", 3)
+    mouse, _Button = _pynput_mouse()
+    from pynput.keyboard import Controller as KbCtrl, Key
+    kb = KbCtrl()
+    with kb.pressed(Key.ctrl):
+        mouse.scroll(0, steps)
+
+
+@register("zoom_out", kind="discrete")
+def _zoom_out(params):
+    steps = params.get("steps", 3)
+    mouse, _Button = _pynput_mouse()
+    from pynput.keyboard import Controller as KbCtrl, Key
+    kb = KbCtrl()
+    with kb.pressed(Key.ctrl):
+        mouse.scroll(0, -steps)
+
+
+@register("zoom_continuous", kind="continuous")
+def _zoom_continuous(hand_data, params, prev_state):
+    """Maps the two-hand spread/pinch distance change to Ctrl+scroll, so
+    spreading your hands zooms in and pinching them zooms out - the natural
+    gesture from touchscreens. hand_data["distance"] is the current
+    distance between the two index tips, provided by the bimanual engine."""
+    mouse, _Button = _pynput_mouse()
+    from pynput.keyboard import Controller as KbCtrl, Key
+
+    dist = hand_data.get("distance", 0.5)
+    prev_dist = prev_state.get("prev_dist", dist)
+    sensitivity = params.get("zoom_sensitivity", 80)
+    dead_zone = params.get("dead_zone", 0.005)
+
+    delta = (dist - prev_dist) * sensitivity
+    ticks, new_accum = accumulate_scroll_ticks(prev_state.get("zoom_accum", 0.0), delta)
+    prev_state["zoom_accum"] = new_accum
+    prev_state["prev_dist"] = dist
+
+    if ticks:
+        kb = KbCtrl()
+        with kb.pressed(Key.ctrl):
+            mouse.scroll(0, ticks)
+    return prev_state
+
+
+@register("two_hand_scroll", kind="continuous")
+def _two_hand_scroll(hand_data, params, prev_state):
+    """Scrolls using the midpoint between both hands. Useful when you want
+    smoother, more controlled scrolling by anchoring the gesture with two
+    reference points instead of one."""
+    mouse, _Button = _pynput_mouse()
+    dead_zone = params.get("dead_zone", 0.002)
+    mid_y = hand_data["point"][1]
+    last_y = prev_state.get("last_y")
+    if last_y is not None:
+        raw = last_y - mid_y
+        if abs(raw) >= dead_zone:
+            delta = raw * params.get("scroll_sensitivity", 25)
+            ticks, new_accum = accumulate_scroll_ticks(prev_state.get("scroll_accum", 0.0), delta)
+            prev_state["scroll_accum"] = new_accum
+            if ticks:
+                mouse.scroll(0, ticks)
+    prev_state["last_y"] = mid_y
+    return prev_state
+
+
+@register("two_hand_move_cursor", kind="continuous")
+def _two_hand_move_cursor(hand_data, params, prev_state):
+    """Moves the cursor using the midpoint of both hands. More stable than
+    one hand alone because random tremor in each hand partially cancels
+    out at the midpoint."""
+    mouse, _Button = _pynput_mouse()
+    sensitivity = params.get("relative_sensitivity", 1400)
+    dead_zone = params.get("dead_zone", 0.0015)
+    max_speed = params.get("max_speed_px_per_frame", 60)
+    max_accel = params.get("max_accel_px_per_frame", 18)
+
+    nx, ny = hand_data["point"]  # midpoint, already set by bimanual engine
+    last = prev_state.get("last_point")
+    prev_dx, prev_dy = prev_state.get("last_applied_move", (0.0, 0.0))
+
+    if last is not None:
+        raw_dx = nx - last[0]
+        raw_dy = ny - last[1]
+        if abs(raw_dx) < dead_zone:
+            raw_dx = 0.0
+        if abs(raw_dy) < dead_zone:
+            raw_dy = 0.0
+        apply_dx, apply_dy = clamp_movement(
+            raw_dx * sensitivity, raw_dy * sensitivity,
+            prev_dx, prev_dy, max_speed, max_accel
+        )
+        if apply_dx or apply_dy:
+            mouse.move(apply_dx, apply_dy)
+        prev_state["last_applied_move"] = (apply_dx, apply_dy)
+    else:
+        prev_state["last_applied_move"] = (0.0, 0.0)
+
+    prev_state["last_point"] = (nx, ny)
+    return prev_state
+
+
 def release_all_inputs():
     """Emergency-stop helper: releases any mouse buttons / modifier keys
     that might be physically 'held down' by a stateful action, so an

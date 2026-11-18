@@ -295,6 +295,163 @@ def test_swipe_motion_survives_one_dropped_frame_mid_swipe():
     print("PASS: swipe motion history survives one dropped frame mid-swipe")
 
 
+def test_two_hands_tracked_independently_with_separate_state():
+    """Two hands must get separate slots, separate gesture state, and
+    separate pinch hysteresis. Regression test: pinch hysteresis used to
+    be stored on the shared gesture-definition dict, so two hands
+    evaluating the same pinch gesture overwrote each other's enter/exit
+    state every frame."""
+    gestures_cfg = {
+        "pinch_any": {"type": "pinch", "hand": "any",
+                       "finger_a": "thumb", "finger_b": "index",
+                       "enter_threshold": 0.20, "exit_threshold": 0.38, "hold_ms": 0},
+    }
+    reliability_cfg = {"smoothing_window_frames": 3, "static_gesture_debounce_frames": 1,
+                        "default_action_cooldown_seconds": 0.05, "motion_gesture_cooldown_seconds": 0.05,
+                        "hand_grace_period_seconds": 0.25, "max_tracked_hands": 2}
+    engine = GestureEngine(gestures_cfg, reliability_cfg)
+
+    # Two hands well apart in frame: left one pinching, right one open.
+    def shifted(lms, dx):
+        return [(x + dx, y, z) for (x, y, z) in lms]
+
+    t = 7000.0
+    slot_ids_seen = set()
+    for _ in range(5):
+        hand_pinching = {"handedness": "Left", "landmarks": shifted(pinch_hand(), -0.25)}
+        hand_open = {"handedness": "Right", "landmarks": shifted(make_hand({}), 0.25)}
+        events = engine.process([hand_pinching, hand_open], now=t)
+        for hd in engine.last_hand_data:
+            slot_ids_seen.add(hd["slot_id"])
+        t += 0.05
+
+    assert len(slot_ids_seen) == 2, f"expected 2 distinct hand slots, got {slot_ids_seen}"
+
+    # Exactly one of the two hands should be registering the pinch.
+    active_slots = {e.hand_label for e in events if e.state in ("start", "hold")}
+    assert len(active_slots) == 1, (
+        f"exactly one hand should be pinching, but {len(active_slots)} slots "
+        f"reported the gesture active - suggests shared state between hands"
+    )
+    print(f"PASS: two hands tracked as separate slots {sorted(slot_ids_seen)}; "
+          f"only the pinching hand triggered the gesture")
+
+
+def test_hand_filter_restricts_gesture_to_one_hand():
+    """A gesture with hand:'Right' must never fire for a left hand - this
+    is what makes a two-hand layout (different actions per hand) work."""
+    gestures_cfg = {
+        "right_only_fist": {"type": "fingers", "hand": "Right",
+                             "pattern": [False, False, False, False, False], "hold_ms": 0},
+    }
+    reliability_cfg = {"smoothing_window_frames": 3, "static_gesture_debounce_frames": 1,
+                        "default_action_cooldown_seconds": 0.05, "motion_gesture_cooldown_seconds": 0.05,
+                        "hand_grace_period_seconds": 0.25}
+    engine = GestureEngine(gestures_cfg, reliability_cfg)
+
+    t = 8000.0
+    left_events = []
+    for _ in range(5):
+        left_fist = {"handedness": "Left", "landmarks": curled_hand()}
+        left_events += engine.process([left_fist], now=t)
+        t += 0.05
+    assert not any(e.gesture_name == "right_only_fist" for e in left_events), \
+        "a hand:'Right' gesture must not fire for a Left hand"
+
+    engine.reset()
+    right_events = []
+    for _ in range(5):
+        right_fist = {"handedness": "Right", "landmarks": curled_hand()}
+        right_events += engine.process([right_fist], now=t)
+        t += 0.05
+    assert any(e.gesture_name == "right_only_fist" and e.state == "start" for e in right_events), \
+        "a hand:'Right' gesture should fire for a Right hand"
+    print("PASS: hand filter correctly restricts a gesture to one specific hand")
+
+
+def test_bimanual_spread_fires_when_hands_move_apart():
+    """Two-hand spread gesture should fire when both hands move apart, not
+    when they stay still or move together."""
+    gestures_cfg = {
+        "spread": {"type": "bimanual", "subtype": "two_hand_distance",
+                    "direction": "spreading", "min_delta": 0.005, "hold_ms": 0},
+    }
+    reliability_cfg = {"smoothing_window_frames": 3, "static_gesture_debounce_frames": 1,
+                        "default_action_cooldown_seconds": 0.1, "motion_gesture_cooldown_seconds": 0.1,
+                        "hand_grace_period_seconds": 0.25, "max_tracked_hands": 2}
+    engine = GestureEngine(gestures_cfg, reliability_cfg)
+
+    t = 9000.0
+    fired = False
+    # Both hands start close, then spread apart over several frames.
+    for i in range(8):
+        sep = 0.10 + i * 0.04  # increasing separation
+        left  = {"handedness": "Left",  "landmarks": make_hand({8: (0.50 - sep, 0.45)})}
+        right = {"handedness": "Right", "landmarks": make_hand({8: (0.50 + sep, 0.45)})}
+        events = engine.process([left, right], now=t)
+        if any(e.gesture_name == "spread" and e.state == "start" for e in events):
+            fired = True
+        t += 0.05
+
+    assert fired, "bimanual spread gesture never fired while hands moved apart"
+
+    # Reset and try with hands staying still - should NOT fire.
+    engine.reset()
+    t += 1.0
+    still_fired = False
+    for _ in range(8):
+        left  = {"handedness": "Left",  "landmarks": make_hand({8: (0.30, 0.45)})}
+        right = {"handedness": "Right", "landmarks": make_hand({8: (0.70, 0.45)})}
+        events = engine.process([left, right], now=t)
+        if any(e.gesture_name == "spread" and e.state == "start" for e in events):
+            still_fired = True
+        t += 0.05
+    assert not still_fired, "bimanual spread incorrectly fired when hands were stationary"
+    print("PASS: bimanual spread fires during hand-spread motion, not when stationary")
+
+
+def test_bimanual_both_open_palms_requires_both_hands():
+    """two_hand_any subtype: gesture should fire only when BOTH hands
+    satisfy their conditions, not just one."""
+    gestures_cfg = {
+        "both_open": {
+            "type": "bimanual", "subtype": "two_hand_any", "hold_ms": 0,
+            "left_condition":  {"type": "fingers", "pattern": [True, True, True, True, True]},
+            "right_condition": {"type": "fingers", "pattern": [True, True, True, True, True]},
+        },
+    }
+    reliability_cfg = {"smoothing_window_frames": 2, "static_gesture_debounce_frames": 1,
+                        "default_action_cooldown_seconds": 0.1, "motion_gesture_cooldown_seconds": 0.1,
+                        "hand_grace_period_seconds": 0.25, "max_tracked_hands": 2}
+    engine = GestureEngine(gestures_cfg, reliability_cfg)
+
+    t = 10000.0
+    # Only left hand open, right fisted - should NOT fire.
+    half_fired = False
+    for _ in range(4):
+        left  = {"handedness": "Left",  "landmarks": make_hand({})}       # open
+        right = {"handedness": "Right", "landmarks": curled_hand()}         # fist
+        events = engine.process([left, right], now=t)
+        if any(e.gesture_name == "both_open" for e in events):
+            half_fired = True
+        t += 0.05
+    assert not half_fired, "both_open fired with only one hand open"
+
+    # Both open - SHOULD fire.
+    engine.reset()
+    t += 1.0
+    both_fired = False
+    for _ in range(4):
+        left  = {"handedness": "Left",  "landmarks": make_hand({})}
+        right = {"handedness": "Right", "landmarks": make_hand({})}
+        events = engine.process([left, right], now=t)
+        if any(e.gesture_name == "both_open" and e.state in ("start", "hold") for e in events):
+            both_fired = True
+        t += 0.05
+    assert both_fired, "both_open never fired when both hands were open"
+    print("PASS: two_hand_any requires both hands to satisfy their conditions")
+
+
 if __name__ == "__main__":
     test_finger_states_open_palm()
     test_finger_states_fist()
@@ -305,4 +462,8 @@ if __name__ == "__main__":
     test_swipe_works_with_realistic_default_smoothing()
     test_gesture_state_survives_one_dropped_detection_frame()
     test_swipe_motion_survives_one_dropped_frame_mid_swipe()
+    test_two_hands_tracked_independently_with_separate_state()
+    test_hand_filter_restricts_gesture_to_one_hand()
+    test_bimanual_spread_fires_when_hands_move_apart()
+    test_bimanual_both_open_palms_requires_both_hands()
     print("\nAll gesture_engine tests passed.")

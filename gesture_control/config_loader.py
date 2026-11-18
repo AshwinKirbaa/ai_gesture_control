@@ -52,7 +52,8 @@ def _apply_mouse_defaults(cfg: dict):
     forwardable = {k: v for k, v in mouse_defaults.items() if k in relevant_keys}
 
     for mapping in cfg["mappings"].values():
-        if mapping.get("action") in ("move_cursor", "drag"):
+        if mapping.get("action") in ("move_cursor", "drag", "two_hand_move_cursor",
+                                      "two_hand_scroll", "zoom_continuous"):
             for k, v in forwardable.items():
                 mapping.setdefault(k, v)
 

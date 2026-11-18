@@ -57,27 +57,69 @@
     "_accel_note": "max_speed_px_per_frame caps how far the cursor can jump in one frame no matter what (protects against a single bad tracking frame). max_accel_px_per_frame caps how much the movement can CHANGE from the previous frame - this is what actually removes the choppy feel, since jitter shows up as small random accelerations frame to frame. Raise max_accel if fast swipes across the screen feel sluggish to reach full speed; lower it if the cursor still feels jerky."
   },
   "gestures": {
-    "pinch_index_click": {
-      "type": "pinch",
-      "hand": "any",
-      "finger_a": "thumb",
-      "finger_b": "index",
-      "enter_threshold": 0.2,
-      "exit_threshold": 0.38,
-      "hold_ms": 90
-    },
-    "pinch_middle_click": {
-      "type": "pinch",
-      "hand": "any",
-      "finger_a": "thumb",
-      "finger_b": "middle",
-      "enter_threshold": 0.2,
-      "exit_threshold": 0.38,
-      "hold_ms": 90
-    },
-    "point_index": {
+    "left_thumb": {
       "type": "fingers",
-      "hand": "any",
+      "hand": "left",
+      "pattern": [
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "hold_ms": 250
+    },
+    "left_pinky": {
+      "type": "fingers",
+      "hand": "left",
+      "pattern": [
+        false,
+        false,
+        false,
+        false,
+        true
+      ],
+      "hold_ms": 250
+    },
+    "right_pinky": {
+      "type": "fingers",
+      "hand": "Right",
+      "pattern": [
+        false,
+        false,
+        false,
+        false,
+        true
+      ],
+      "hold_ms": 250
+    },
+    "right_swag": {
+      "type": "fingers",
+      "hand": "Right",
+      "pattern": [
+        true,
+        false,
+        false,
+        false,
+        true
+      ],
+      "hold_ms": 250
+    },
+    "right_web": {
+      "type": "fingers",
+      "hand": "Right",
+      "pattern": [
+        true,
+        true,
+        false,
+        false,
+        true
+      ],
+      "hold_ms": 250
+    },
+    "right_point_index": {
+      "type": "fingers",
+      "hand": "Right",
       "pattern": [
         false,
         true,
@@ -87,21 +129,36 @@
       ],
       "hold_ms": 0
     },
-    "open_palm": {
-      "type": "fingers",
-      "hand": "any",
-      "pattern": [
-        true,
-        true,
-        true,
-        true,
-        true
-      ],
-      "hold_ms": 250
+    "right_pinch_click": {
+      "type": "pinch",
+      "hand": "Right",
+      "finger_a": "thumb",
+      "finger_b": "index",
+      "enter_threshold": 0.2,
+      "exit_threshold": 0.38,
+      "hold_ms": 90
     },
-    "two_finger_scroll": {
+    "right_pinch_middle_rclick": {
+      "type": "pinch",
+      "hand": "Right",
+      "finger_a": "thumb",
+      "finger_b": "middle",
+      "enter_threshold": 0.2,
+      "exit_threshold": 0.38,
+      "hold_ms": 90
+    },
+    "right_pinch_drag": {
+      "type": "pinch",
+      "hand": "Right",
+      "finger_a": "thumb",
+      "finger_b": "ring",
+      "enter_threshold": 0.2,
+      "exit_threshold": 0.4,
+      "hold_ms": 120
+    },
+    "left_two_finger_scroll": {
       "type": "fingers",
-      "hand": "any",
+      "hand": "Left",
       "pattern": [
         null,
         true,
@@ -111,108 +168,138 @@
       ],
       "hold_ms": 0
     },
-    "thumb_pinky_ok": {
+    "left_open_palm": {
       "type": "fingers",
-      "hand": "any",
+      "hand": "Left",
       "pattern": [
         true,
-        false,
-        false,
-        false,
-        true
-      ],
-      "hold_ms": 300
-    },
-    "thumb": {
-      "type": "fingers",
-      "hand": "any",
-      "pattern": [
         true,
-        false,
-        false,
-        false,
-        false
-      ],
-      "hold_ms": 300
-    },
-    "pinky": {
-      "type": "fingers",
-      "hand": "any",
-      "pattern": [
-        false,
-        false,
-        false,
-        false,
+        true,
+        true,
         true
       ],
-      "hold_ms": 300
+      "hold_ms": 250
     },
-    "swipe_left": {
+    "left_swipe_left": {
       "type": "swipe",
-      "hand": "any",
+      "hand": "Left",
       "direction": "left",
       "min_velocity": 0.85,
-      "window_ms": 350
+      "window_ms": 350,
+      "min_displacement": 0.15
     },
-    "swipe_right": {
+    "left_swipe_right": {
       "type": "swipe",
-      "hand": "any",
+      "hand": "Left",
       "direction": "right",
       "min_velocity": 0.85,
-      "window_ms": 350
+      "window_ms": 350,
+      "min_displacement": 0.15
     },
-    "swipe_up": {
-      "type": "swipe",
-      "hand": "any",
-      "direction": "up",
-      "min_velocity": 0.85,
-      "window_ms": 350
+    "bimanual_spread_zoom": {
+      "type": "bimanual",
+      "subtype": "two_hand_distance",
+      "direction": "spreading",
+      "min_delta": 0.005,
+      "hold_ms": 0,
+      "_comment": "Both hands spreading apart. Map to zoom_continuous for pinch-to-zoom."
     },
-    "swipe_down": {
-      "type": "swipe",
-      "hand": "any",
-      "direction": "down",
-      "min_velocity": 0.85,
-      "window_ms": 350
+    "bimanual_pinch_zoom": {
+      "type": "bimanual",
+      "subtype": "two_hand_distance",
+      "direction": "pinching",
+      "min_delta": 0.005,
+      "hold_ms": 0,
+      "_comment": "Both hands moving together. Map to zoom_continuous for pinch-to-zoom."
+    },
+    "bimanual_both_index_scroll": {
+      "type": "bimanual",
+      "subtype": "two_hand_distance",
+      "direction": null,
+      "hold_ms": 0,
+      "_comment": "Both hands present and moving. Map to two_hand_scroll for steadier scrolling."
+    },
+    "bimanual_both_open_palms": {
+      "type": "bimanual",
+      "subtype": "two_hand_any",
+      "left_condition": {
+        "type": "fingers",
+        "pattern": [
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "right_condition": {
+        "type": "fingers",
+        "pattern": [
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "hold_ms": 400,
+      "_comment": "Both palms open at the same time. Can map to lock_windows, screenshot, etc."
     }
   },
   "mappings": {
-    "point_index": {
-      "action": "move_cursor"
-    },
-    "pinch_index_click": {
-      "action": "left_click"
-    },
-    "pinch_middle_click": {
-      "action": "right_click"
-    },
-    "two_finger_scroll": {
-      "action": "drag"
-    },
-    "open_palm": {
-      "action": "media_play_pause"
-    },
-    "thumb_pinky_ok": {
-      "action": "lock_windows"
-    },
-    "thumb": {
-      "action": "scroll_vertical"
-    },
-    "pinky": {
-      "action": "alt_tab"
-    },
-    "swipe_left": {
-      "action": "media_previous"
-    },
-    "swipe_right": {
+    "left_thumb": {
       "action": "media_next"
     },
-    "swipe_up": {
-      "action": "volume_up"
+    "left_pinky": {
+      "action": "media_previous"
     },
-    "swipe_down": {
-      "action": "volume_down"
+    "right_point_index": {
+      "action": "move_cursor"
+    },
+    "right_pinky": {
+      "action": "alt_tab"
+    },
+    "right_swag": {
+      "action": "lock_windows"
+    },
+    "right_web": {
+      "action": "screenshot"
+    },
+    "right_pinch_click": {
+      "action": "left_click"
+    },
+    "right_pinch_middle_rclick": {
+      "action": "right_click"
+    },
+    "right_pinch_drag": {
+      "action": "drag"
+    },
+    "left_two_finger_scroll": {
+      "action": "scroll_vertical"
+    },
+    "left_open_palm": {
+      "action": "media_play_pause"
+    },
+    "left_swipe_left": {
+      "action": "media_previous"
+    },
+    "left_swipe_right": {
+      "action": "media_next"
+    },
+    "bimanual_both_open_palms": {
+      "action": "lock_windows"
+    },
+    "bimanual_both_index_scroll": {
+      "action": "two_hand_scroll"
+    },
+    "bimanual_pinch_zoom": {
+      "action": "zoom_continuous"
+    },
+    "bimanual_spread_zoom": {
+      "action": "zoom_continuous"
     }
   },
-  "_action_catalog_note": "See gesture_control/action_engine.py ACTIONS dict for the full list of built-in action names you can put on the right-hand side of 'mappings' above: left_click, right_click, middle_click, double_click, drag, move_cursor, scroll_vertical, scroll_horizontal, key_press, key_combo, copy, paste, cut, undo, redo, alt_tab, win_shortcut, open_app, close_window, minimize_window, maximize_window, volume_up, volume_down, volume_mute, media_play_pause, media_next, media_previous, brightness_up, brightness_down, screenshot, lock_windows, custom_hotkey, system_pause_toggle."
+  "_action_catalog_note": "See gesture_control/action_engine.py ACTIONS dict for the full list of built-in action names you can put on the right-hand side of 'mappings' above: left_click, right_click, middle_click, double_click, drag, move_cursor, scroll_vertical, scroll_horizontal, key_press, key_combo, copy, paste, cut, undo, redo, alt_tab, win_shortcut, open_app, close_window, minimize_window, maximize_window, volume_up, volume_down, volume_mute, media_play_pause, media_next, media_previous, brightness_up, brightness_down, screenshot, lock_windows, custom_hotkey, system_pause_toggle.",
+  "_two_hand_note": "TWO-HAND SETUP: the 'hand' field on each gesture ('Left', 'Right', or 'any') decides which hand triggers it, so the same physical pose can do different things on each hand. Default layout: RIGHT hand = pointer (point to move, pinch to click, thumb+middle right-click, thumb+ring drag); LEFT hand = scroll + media (two fingers to scroll, open palm play/pause, fist to pause gesture control, swipe left/right for prev/next track). Both hands work simultaneously and independently. Set hand to 'any' on a gesture if you want either hand to trigger it. Note: 'Left'/'Right' refer to your actual physical hands as you see yourself in the mirrored preview.",
+  "_bimanual_examples_note": "BIMANUAL GESTURE EXAMPLES: the gestures above starting with 'bimanual_' are examples showing how to configure two-hand gestures. To activate one, add it to 'mappings' pointing at a bimanual-capable action: zoom_continuous, two_hand_scroll, two_hand_move_cursor, zoom_in, zoom_out. Example: add to mappings: 'bimanual_spread_zoom': {'action': 'zoom_continuous'}, 'bimanual_pinch_zoom': {'action': 'zoom_continuous'}. These are inactive by default (not in mappings) so they don't interfere with the normal single-hand layout - add them only when you want them."
 }
