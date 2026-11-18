@@ -20,8 +20,7 @@ def main():
         print("[FAIL] TELEGRAM_CHAT_ID is empty in config.py")
         sys.exit(1)
 
-    print(f"[INFO] Bot token starts with: {config.TELEGRAM_BOT_TOKEN[:10]}...")
-    print(f"[INFO] Chat ID: {config.TELEGRAM_CHAT_ID}")
+    print("[INFO] Telegram credentials loaded from the environment.")
 
     # 1) Verify the bot token itself is valid
     url_me = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/getMe"

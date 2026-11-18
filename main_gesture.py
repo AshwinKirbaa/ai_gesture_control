@@ -37,6 +37,8 @@ from gesture_control.auth_bridge import AuthBridge
 from gesture_control.gesture_engine import GestureEngine
 from gesture_control.hand_tracker import HandTracker
 from gesture_control.overlay import draw_overlay, draw_hand_skeleton
+from gesture_control.performance import PerformanceMonitor
+from gesture_control.auto_calibration import CursorCalibrator
 
 _emergency_stop = threading.Event()
 
@@ -201,6 +203,8 @@ def main():
     parser = argparse.ArgumentParser(description="Owner-gated hand-gesture laptop controller.")
     parser.add_argument("--calibrate", action="store_true",
                          help="Show detection/gesture/auth overlay but do NOT execute actions.")
+    parser.add_argument("--auto-calibrate", action="store_true",
+                         help="Measure cursor jitter for 3 seconds and save a tuned dead zone.")
     parser.add_argument("--no-auth", action="store_true",
                          help="Bypass owner face authentication (runs gestures without face check).")
     parser.add_argument("--config", default=config_loader.DEFAULT_CONFIG_PATH,
@@ -216,9 +220,8 @@ def main():
         if bypass_auth:
             print("[INFO] Running in no-auth mode: gestures will work without face verification.")
         else:
-            print("[INFO] No registered owner face found yet.")
-            print("[INFO] Running in FACE-GATED mode: gestures only activate when a face is detected in frame.")
-            print("[TIP] Press 'e' in the preview window (or run register_face.py) to lock gestures specifically to YOUR face.")
+            print("[SECURITY] No registered owner face found. OS actions will remain LOCKED.")
+            print("[TIP] Press 'e' in the preview window or run register_face.py to enroll the owner.")
     else:
         print(f"[INFO] Loaded {len(owner_embeddings)} owner face sample(s). Gestures gated to owner's face.")
     face_id.get_face_app()
@@ -229,7 +232,7 @@ def main():
 
     auth = AuthBridge(face_id, owner_embeddings, gcfg["authentication"], recognition_threshold, bypass_auth=bypass_auth)
     gesture_engine = GestureEngine(gcfg["gestures"], gcfg["reliability"])
-    controller = ActionController(gcfg["mappings"], dry_run=args.calibrate)
+    controller = ActionController(gcfg["mappings"], dry_run=args.calibrate or args.auto_calibrate)
     hand_tracker = HandTracker(gcfg["hands"])
 
     cam_settings = resolve_camera_settings(gcfg)
@@ -246,10 +249,14 @@ def main():
 
     processing_width = gcfg["hands"].get("processing_width", 640)
 
+    dry_run_mode = args.calibrate or args.auto_calibrate
     print("[INFO] Gesture control running."
-          + (" (CALIBRATION MODE - no actions will fire)" if args.calibrate else ""))
+          + (" (CALIBRATION MODE - no actions will fire)" if dry_run_mode else ""))
 
     fps_count, fps_t0, fps = 0, time.time(), 0.0
+    perf = PerformanceMonitor()
+    calibrator = CursorCalibrator() if args.auto_calibrate else None
+    calibration_message = ""
 
     try:
         while True:
@@ -257,7 +264,9 @@ def main():
                 print("[EMERGENCY] ESC pressed - stopping all control immediately.")
                 break
 
+            capture_t0 = time.perf_counter()
             ret, frame = cap.read()
+            perf.record("capture", (time.perf_counter() - capture_t0) * 1000.0)
             if not ret or frame is None:
                 time.sleep(0.05)
                 continue
@@ -266,12 +275,14 @@ def main():
                 frame = cv2.flip(frame, 1)
 
             now = time.time()
-            auth_status = auth.update(frame, now)
+            with perf.measure("auth"):
+                auth_status = auth.update(frame, now)
 
             active_gesture_labels = []
             if not auth_status.locked:
                 rgb = cv2.cvtColor(_downscale_for_tracking(frame, processing_width), cv2.COLOR_BGR2RGB)
-                hands = hand_tracker.update(rgb)
+                with perf.measure("hands"):
+                    hands = hand_tracker.update(rgb)
                 if cam_settings["mirror"]:
                     # MediaPipe's Left/Right classification assumes an
                     # un-mirrored camera frame. Since we flip the frame for
@@ -281,8 +292,36 @@ def main():
                     # hand-specific gesture filters are actually accurate.
                     for h in hands:
                         h["handedness"] = "Left" if h["handedness"] == "Right" else "Right"
-                events = gesture_engine.process(hands, now)
-                active_gesture_labels = controller.handle_events(events)
+                with perf.measure("gestures"):
+                    events = gesture_engine.process(hands, now)
+                with perf.measure("actions"):
+                    active_gesture_labels = controller.handle_events(events)
+
+                if calibrator is not None:
+                    pointing_hands = [
+                        hand for hand in gesture_engine.last_hand_data
+                        if hand["fingers"][1] and not any(hand["fingers"][2:])
+                    ]
+                    if len(pointing_hands) == 1:
+                        calibrator.add(pointing_hands[0]["point_raw"], now)
+                        calibration_message = (
+                            "AUTO CALIBRATION: hold one pointing hand still - "
+                            f"{calibrator.remaining(now):.1f}s"
+                        )
+                    else:
+                        calibration_message = "AUTO CALIBRATION: show exactly one pointing hand"
+                    if calibrator.complete(now):
+                        try:
+                            dead_zone = calibrator.result()
+                            raw_cfg = config_loader.load_raw_config(args.config)
+                            raw_cfg["mouse"]["dead_zone"] = round(dead_zone, 6)
+                            config_loader.save_config(raw_cfg, args.config)
+                            print(f"[CALIBRATION] Saved mouse.dead_zone={dead_zone:.6f}")
+                            calibration_message = f"CALIBRATED: dead zone {dead_zone:.4f} (saved)"
+                        except (ValueError, OSError) as e:
+                            print(f"[CALIBRATION] Failed: {e}")
+                            calibration_message = f"CALIBRATION FAILED: {e}"
+                        calibrator = None
 
                 per_hand_active = {}
                 for ev in events:
@@ -313,8 +352,10 @@ def main():
                 active_gestures=active_gesture_labels,
                 last_action=controller.last_action_label,
                 paused=controller.paused,
-                calibrate_mode=args.calibrate,
+                calibrate_mode=dry_run_mode,
                 owner_name=base_config.OWNER_NAME,
+                timings=perf.averages(),
+                calibration_message=calibration_message,
             )
             cv2.imshow("Gesture Control - press q to quit, ESC for emergency stop", frame)
 

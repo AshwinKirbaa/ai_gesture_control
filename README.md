@@ -14,6 +14,7 @@ The project combines MediaPipe hand tracking, configurable gesture recognition, 
 - Gesture debounce, hold duration, hysteresis, and cooldowns
 - Automatic GPU-to-CPU MediaPipe fallback
 - Calibration mode that performs no OS actions
+- Automatic cursor-noise calibration and per-stage performance timings
 - Emergency stop that releases held inputs
 - JSON-based gesture remapping without changing Python code
 - Offline unit tests for gesture detection, filtering, and actions
@@ -138,6 +139,13 @@ Start in calibration mode to inspect tracking and authentication without trigger
 python main_gesture.py --calibrate
 ```
 
+Automatically measure tracking jitter while holding one pointing hand still
+and save a tuned cursor dead zone:
+
+```powershell
+python main_gesture.py --auto-calibrate
+```
+
 Use a different configuration file:
 
 ```powershell
@@ -186,13 +194,30 @@ Useful settings in `gesture_settings.json` include:
 | `hands.processing_width` | Lower values improve speed; higher values improve distant-hand accuracy |
 | `hands.min_detection_confidence` | Raises or lowers the hand detection requirement |
 | `mouse.relative_sensitivity` | Changes cursor movement scale |
-| `mouse.dead_zone` | Ignores small tracking movements and hand tremor |
+| `mouse.dead_zone` | Ignores small tracking movements and hand tremor; tune with `--auto-calibrate` |
 | `mouse.max_speed_px_per_frame` | Limits large cursor jumps |
 | `mouse.max_accel_px_per_frame` | Controls how quickly cursor speed may change |
 | `reliability.one_euro_beta` | Higher values reduce lag during fast movement |
 | `reliability.hand_grace_period_seconds` | Preserves hand state across brief tracking loss |
 
-Use `--calibrate` after changing thresholds or gesture definitions.
+Use `--calibrate` after changing gesture definitions. The HUD reports rolling
+capture, authentication, hand tracking, gesture, and action timings so the
+slow stage is visible directly.
+
+## Telegram configuration
+
+Telegram credentials are not stored in source code. Copy `.env.example` to a
+local `.env` if your launcher loads environment files, or set them in the
+shell before running security-camera mode:
+
+```powershell
+$env:TELEGRAM_BOT_TOKEN = "your-new-token"
+$env:TELEGRAM_CHAT_ID = "your-chat-id"
+python main.py
+```
+
+If a token has previously been committed, revoke it through @BotFather before
+using Telegram alerts again.
 
 ## Tests
 

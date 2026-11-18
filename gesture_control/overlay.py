@@ -68,7 +68,8 @@ def draw_hand_skeleton(frame, hands, per_hand_active: dict = None):
 
 
 def draw_overlay(frame, *, auth_status, fps, active_gestures, last_action,
-                  paused: bool, calibrate_mode: bool, owner_name: str):
+                  paused: bool, calibrate_mode: bool, owner_name: str,
+                  timings=None, calibration_message=""):
     h, w = frame.shape[:2]
     y = 30
 
@@ -85,6 +86,16 @@ def draw_overlay(frame, *, auth_status, fps, active_gestures, last_action,
 
     cv2.putText(frame, f"FPS: {fps:.1f}", (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, WHITE, 2)
     y += 26
+
+    if timings:
+        timing_text = "  ".join(f"{name}:{ms:.1f}ms" for name, ms in timings.items())
+        cv2.putText(frame, timing_text, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.43, GRAY, 1)
+        y += 22
+
+    if calibration_message:
+        cv2.putText(frame, calibration_message, (10, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, YELLOW, 2)
+        y += 24
 
     if paused:
         cv2.putText(frame, "GESTURES PAUSED (fist to resume)", (10, y),

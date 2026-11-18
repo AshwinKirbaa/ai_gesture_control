@@ -200,19 +200,10 @@ first are `hands.processing_width` (try 480), `reliability.cursor_smoothing_alph
 (try 0.25), and `mouse.dead_zone` (raise it).
 
 
-While inspecting the project, `config.py` had a live Telegram bot token
-and chat ID committed in plaintext:
-
-```python
-TELEGRAM_BOT_TOKEN = "8770466270:AAHuyjdrnODaPCKiJ7WxjqmMBDKB0ORIg4U"
-TELEGRAM_CHAT_ID = "7878998325"
-```
-
-This gesture-control feature doesn't use or touch that. But independent of
-this project, it's worth rotating that token via @BotFather (revoke +
-regenerate) and loading it from an environment variable or a
-`.gitignore`'d file instead, especially before sharing this project folder
-with anyone or pushing it anywhere.
+Telegram credentials are read from the `TELEGRAM_BOT_TOKEN` and
+`TELEGRAM_CHAT_ID` environment variables. Never commit them. If a token was
+ever committed, revoke and regenerate it through @BotFather because removing
+it from the latest file does not remove it from Git history.
 
 ## Two-hand control
 

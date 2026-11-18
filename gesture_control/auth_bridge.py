@@ -82,15 +82,12 @@ class AuthBridge:
 
         self.last_face_seen_time = now
 
-        # Case 1: No owner enrolled yet -> Face presence mode (requires any face detected)
+        # No biometric template means there is nobody we can authenticate.
+        # Never degrade silently to "any face unlocks" for an OS-control app.
         if self.owner_embeddings is None or len(self.owner_embeddings) == 0:
-            self.owner_streak += 1
-            if self.owner_streak >= 2:
-                self.locked = False
-                reason = f"face detected ({len(detections)}) - UNLOCKED"
-            else:
-                reason = "face detected, confirming..."
-            status = AuthStatus(self.locked, 1.0, reason)
+            self.locked = True
+            self.owner_streak = 0
+            status = AuthStatus(True, -1.0, "owner not enrolled - press E")
             self._last_status = status
             return status
 

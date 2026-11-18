@@ -23,6 +23,19 @@ class ConfigError(Exception):
 
 
 def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
+    cfg = load_raw_config(path)
+
+    missing = [k for k in REQUIRED_TOP_LEVEL_KEYS if k not in cfg]
+    if missing:
+        raise ConfigError(f"gesture_settings.json is missing required section(s): {missing}")
+
+    _validate_mappings(cfg)
+    _apply_mouse_defaults(cfg)
+    return cfg
+
+
+def load_raw_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
+    """Load JSON without injecting runtime defaults, suitable for editing."""
     if not os.path.exists(path):
         raise ConfigError(f"Gesture config not found at {path}")
     with open(path, "r", encoding="utf-8") as f:
@@ -31,12 +44,6 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
         except json.JSONDecodeError as e:
             raise ConfigError(f"gesture_settings.json is not valid JSON: {e}")
 
-    missing = [k for k in REQUIRED_TOP_LEVEL_KEYS if k not in cfg]
-    if missing:
-        raise ConfigError(f"gesture_settings.json is missing required section(s): {missing}")
-
-    _validate_mappings(cfg)
-    _apply_mouse_defaults(cfg)
     return cfg
 
 

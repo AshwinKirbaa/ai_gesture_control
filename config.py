@@ -61,9 +61,10 @@ CONSECUTIVE_UNKNOWN_FRAMES = 8     # must see "unknown" this many frames in a ro
 ALERT_COOLDOWN_SECONDS = 60        # min seconds between two alerts
 
 # ---------- Telegram bot (phone alert channel) ----------
-# Fill these in after creating a bot with @BotFather (see README instructions).
-TELEGRAM_BOT_TOKEN = "8770466270:AAHuyjdrnODaPCKiJ7WxjqmMBDKB0ORIg4U"
-TELEGRAM_CHAT_ID = "7878998325"
+# Never commit these values. Put them in the process environment or a local
+# .env file loaded by your launcher (the repository ignores .env files).
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 # ---------- Registration ----------
 REGISTER_SAMPLE_COUNT = 100   # aim for 30-150; more angles/lighting = better accuracy
