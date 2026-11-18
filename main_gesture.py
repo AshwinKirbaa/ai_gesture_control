@@ -193,6 +193,8 @@ def main():
     parser = argparse.ArgumentParser(description="Owner-gated hand-gesture laptop controller.")
     parser.add_argument("--calibrate", action="store_true",
                          help="Show detection/gesture/auth overlay but do NOT execute actions.")
+    parser.add_argument("--no-auth", action="store_true",
+                         help="Bypass owner face authentication (runs gestures without face check).")
     parser.add_argument("--config", default=config_loader.DEFAULT_CONFIG_PATH,
                          help="Path to gesture_settings.json")
     args = parser.parse_args()
@@ -201,17 +203,23 @@ def main():
 
     base_config.ensure_dirs()
     owner_embeddings = face_id.load_owner_embeddings()
+    bypass_auth = args.no_auth or not gcfg.get("authentication", {}).get("enabled", True)
     if owner_embeddings is None:
-        print("[ERROR] No trained owner data found. Run register_face.py first (from the "
-              "existing ai_security_camera project).")
-        sys.exit(1)
+        if bypass_auth:
+            print("[INFO] Running in no-auth mode: gestures will work without face verification.")
+        else:
+            print("[INFO] No registered owner face found yet.")
+            print("[INFO] Running in FACE-GATED mode: gestures only activate when a face is detected in frame.")
+            print("[TIP] Press 'e' in the preview window (or run register_face.py) to lock gestures specifically to YOUR face.")
+    else:
+        print(f"[INFO] Loaded {len(owner_embeddings)} owner face sample(s). Gestures gated to owner's face.")
     face_id.get_face_app()
 
     recognition_threshold = gcfg["authentication"]["recognition_threshold"]
     if recognition_threshold is None:
         recognition_threshold = base_config.RECOGNITION_THRESHOLD
 
-    auth = AuthBridge(face_id, owner_embeddings, gcfg["authentication"], recognition_threshold)
+    auth = AuthBridge(face_id, owner_embeddings, gcfg["authentication"], recognition_threshold, bypass_auth=bypass_auth)
     gesture_engine = GestureEngine(gcfg["gestures"], gcfg["reliability"])
     controller = ActionController(gcfg["mappings"], dry_run=args.calibrate)
     hand_tracker = HandTracker(gcfg["hands"])
@@ -275,6 +283,7 @@ def main():
             else:
                 # Locked: no hand tracking, no gesture evaluation, no
                 # actions - guarantees zero input control while locked.
+                release_all_inputs()
                 gesture_engine.reset()
                 hands, per_hand_active = [], {}
                 if controller.paused:
@@ -318,6 +327,38 @@ def main():
                     print(f"[WARN] Reload failed, keeping previous config: {e}")
             if key == ord("p"):
                 controller.toggle_pause()
+            if key == ord("e"):
+                print("[INFO] Starting face enrollment... Look at the camera and tilt/turn your head slightly.")
+                release_all_inputs()
+                enroll_samples = []
+                last_cap_t = 0.0
+                while len(enroll_samples) < 50:
+                    ret_e, frame_e = cap.read()
+                    if not ret_e or frame_e is None:
+                        continue
+                    if cam_settings["mirror"]:
+                        frame_e = cv2.flip(frame_e, 1)
+                    now_e = time.time()
+                    dets = face_id.detect_faces(frame_e)
+                    if dets and now_e - last_cap_t > 0.08:
+                        det = max(dets, key=lambda d: d["box"][2] * d["box"][3])
+                        enroll_samples.append(det["embedding"])
+                        last_cap_t = now_e
+                        x, y, w, h = det["box"]
+                        cv2.rectangle(frame_e, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    cv2.putText(frame_e, f"ENROLLING FACE: {len(enroll_samples)}/50", (20, 50),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                    cv2.putText(frame_e, "Tilt/turn head slightly. 'q' to cancel.", (20, 90),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                    cv2.imshow("Gesture Control - press q to quit, ESC for emergency stop", frame_e)
+                    k_e = cv2.waitKey(1) & 0xFF
+                    if k_e == ord("q") or k_e == 27:
+                        print("[INFO] Face enrollment cancelled.")
+                        break
+                if len(enroll_samples) >= 10:
+                    owner_arr = face_id.save_owner_embeddings(enroll_samples)
+                    auth.owner_embeddings = owner_arr
+                    print(f"[INFO] Enrolled {len(owner_arr)} face samples. Gestures are now locked specifically to YOUR face!")
 
     except KeyboardInterrupt:
         print("[INFO] Interrupted by user.")

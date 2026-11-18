@@ -107,7 +107,7 @@ def draw_overlay(frame, *, auth_status, fps, active_gestures, last_action,
         cv2.putText(frame, f"last action: {last_action}", (10, h - 15),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, WHITE, 1)
 
-    cv2.putText(frame, "ESC = emergency stop  |  q = quit  |  r = reload config  |  p = pause",
+    cv2.putText(frame, "ESC = stop  |  q = quit  |  r = reload  |  p = pause  |  e = enroll face",
                 (10, h - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, GRAY, 1)
 
     return frame

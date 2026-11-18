@@ -39,21 +39,28 @@ class AuthStatus:
 
 class AuthBridge:
     def __init__(self, face_id_module, owner_embeddings, auth_cfg: dict,
-                 recognition_threshold: float):
+                 recognition_threshold: float, bypass_auth: bool = False):
         self.face_id = face_id_module
         self.owner_embeddings = owner_embeddings
         self.cfg = auth_cfg
         self.recognition_threshold = recognition_threshold
         self.strangers_allowed = auth_cfg.get("strangers_allowed", True)
+        self.bypass_auth = bypass_auth
 
         self.owner_streak = 0
         self.unknown_streak = 0
         self.last_face_seen_time = 0.0
-        self.locked = True
+        self.locked = not bypass_auth
         self._frame_counter = 0
-        self._last_status = AuthStatus(True, -1.0, "starting up")
+        self._last_status = (
+            AuthStatus(False, 1.0, "auth disabled")
+            if bypass_auth
+            else AuthStatus(True, -1.0, "starting up (looking for face)")
+        )
 
     def update(self, frame_bgr, now: float = None) -> AuthStatus:
+        if self.bypass_auth:
+            return self._last_status
         now = now if now is not None else time.time()
         self._frame_counter += 1
 
@@ -66,13 +73,28 @@ class AuthBridge:
         if not detections:
             self.owner_streak = 0
             self.unknown_streak = 0
-            if now - self.last_face_seen_time > self.cfg.get("owner_lost_timeout_seconds", 1.5):
+            timeout = self.cfg.get("owner_lost_timeout_seconds", 0.8)
+            if self.owner_embeddings is None or (now - self.last_face_seen_time > timeout):
                 self.locked = True
-            status = AuthStatus(self.locked, -1.0, "no face in frame")
+            status = AuthStatus(self.locked, -1.0, "no face detected - LOCKED")
             self._last_status = status
             return status
 
         self.last_face_seen_time = now
+
+        # Case 1: No owner enrolled yet -> Face presence mode (requires any face detected)
+        if self.owner_embeddings is None or len(self.owner_embeddings) == 0:
+            self.owner_streak += 1
+            if self.owner_streak >= 2:
+                self.locked = False
+                reason = f"face detected ({len(detections)}) - UNLOCKED"
+            else:
+                reason = "face detected, confirming..."
+            status = AuthStatus(self.locked, 1.0, reason)
+            self._last_status = status
+            return status
+
+        # Case 2: Owner enrolled -> Strict biometric owner recognition
         best_sim = -1.0
         any_owner = False
         any_unknown = False
@@ -88,8 +110,7 @@ class AuthBridge:
                 other_face_count += 1
 
         if self.strangers_allowed:
-            # Gate purely on "is the owner confirmed present" - bystanders
-            # elsewhere in frame don't affect the lock either way.
+            # Gate purely on "is the owner confirmed present"
             if any_owner:
                 self.owner_streak += 1
                 self.unknown_streak = 0
@@ -97,8 +118,7 @@ class AuthBridge:
                 self.owner_streak = 0
                 self.unknown_streak = self.unknown_streak + 1 if any_unknown else 0
         else:
-            # Stricter original behavior: ANY unrecognized face anywhere in
-            # frame counts against the lock, even if the owner is also there.
+            # Stricter: ANY unrecognized face in frame locks control
             if any_unknown:
                 self.unknown_streak += 1
                 self.owner_streak = 0
@@ -109,16 +129,16 @@ class AuthBridge:
             elif not any_owner:
                 self.owner_streak = 0
 
-        bystander_note = f", {other_face_count} other face(s) also in frame" if (any_owner and other_face_count) else ""
+        bystander_note = f", {other_face_count} other face(s)" if (any_owner and other_face_count) else ""
 
         if self.unknown_streak >= self.cfg.get("consecutive_unknown_frames_to_lock", 3):
             self.locked = True
-            reason = f"owner not confirmed ({self.unknown_streak} consecutive frames without the owner)"
-        elif self.owner_streak >= self.cfg.get("consecutive_owner_frames_to_unlock", 6):
+            reason = f"face not recognized (sim={best_sim:.2f}) - LOCKED"
+        elif self.owner_streak >= self.cfg.get("consecutive_owner_frames_to_unlock", 4):
             self.locked = False
-            reason = f"owner confirmed ({self.owner_streak} consecutive frames, sim={best_sim:.2f}){bystander_note}"
+            reason = f"owner confirmed ({self.owner_streak} frames, sim={best_sim:.2f}){bystander_note}"
         else:
-            reason = f"awaiting confirmation (owner_streak={self.owner_streak}, sim={best_sim:.2f}){bystander_note}"
+            reason = f"confirming owner (sim={best_sim:.2f}){bystander_note}..."
 
         status = AuthStatus(self.locked, best_sim, reason)
         self._last_status = status
